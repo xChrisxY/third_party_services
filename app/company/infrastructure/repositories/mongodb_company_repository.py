@@ -5,6 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from ...domain.entities.company import Company 
 from ...domain.repositories.company_repository import CompanyRepository
 
+from shared.exceptions import BusinessException
+
 class MongoDBCompanyRepository(CompanyRepository): 
     
     def __init__(self, database: AsyncIOMotorDatabase): 
@@ -22,11 +24,57 @@ class MongoDBCompanyRepository(CompanyRepository):
 
         return Company(**created_company)
 
-    async def get_by_id(self, company_id):
-        return await super().get_by_id(company_id)
+    async def get_by_id(self, company_id) -> Optional[Company]:
+        try: 
+            object_id = ObjectId(company_id)
+            company_doc = await self.collection.find_one({"_id": object_id})
+            
+            if company_doc: 
+                company_doc["_id"] = str(company_doc["_id"])
+                return Company(**company_doc)
+            
+            return None
+        except Exception: 
+            return None
 
-    async def update(self, company):
-        return await super().update(company)
+    async def update(self, company_id: str, update_data: dict) -> Company:
+
+        try: 
+            object_id = ObjectId(company_id)
+        
+            existing_company = await self.collection.find_one({"_id": object_id})
+            if not existing_company:
+                return None
+            
+            if 'emails' in update_data and update_data['emails']:
+                existing_emails = existing_company.get('emails', {})
+                update_data['emails'] = {**existing_emails, **update_data['emails']}
+            
+            result = await self.collection.update_one(
+                {"_id": object_id}, 
+                {"$set": update_data}
+            )
+            
+            updated_company = await self.collection.find_one({"_id": object_id})
+            if updated_company: 
+                updated_company["_id"] = str(updated_company["_id"])
+                return Company(**updated_company)
+            return None
+            
+            
+        except Exception as e: 
+            raise BusinessException(f"Error updating company: {str(e)}")
 
     async def delete(self, company_id):
-        return await super().delete(company_id)
+
+        try: 
+            object_id = ObjectId(company_id)
+            
+            result = await self.collection.delete_one({
+                "_id" : object_id
+            })
+            
+            return result.deleted_count > 0 
+        
+        except Exception:
+            return False

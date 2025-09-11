@@ -13,7 +13,7 @@ class CompanyRepository(ABC):
         pass 
     
     @abstractmethod 
-    async def update(self, company: Company) -> Company: 
+    async def update(self, company_id: str, company: dict) -> Company: 
         pass 
     
     @abstractmethod 
