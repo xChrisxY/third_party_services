@@ -56,6 +56,8 @@ class FacturaClient:
 
     async def get_company_credentials(self, uid: str) -> Dict[str, Any]:
         try:
+            logger.info(f"Obteniendo credenciales reales para UID: {uid}")
+            
             headers = {
                 "F-API-KEY": self.api_key,
                 "F-SECRET-KEY": self.secret_key,
@@ -63,13 +65,17 @@ class FacturaClient:
                 "Content-Type": "application/json"
             }
             
-            response = await self.client.get(
-                f"{self.base_url}/v1/account/{uid}",
-                headers=headers
-            )
+            base_url_without_v4 = self.base_url.replace('/v4', '')
+            url = f"{base_url_without_v4}/v1/account/{uid}"
             
+            logger.info(f"URL de credenciales: {url}")
+            logger.info(f"Headers: { {k: v for k, v in headers.items() if k != 'F-SECRET-KEY'} }")
+            
+            response = await self.client.get(url, headers=headers)
             response.raise_for_status()
+            
             result = response.json()
+            logger.info(f"Credenciales obtenidas: {result.get('status')}")
             
             return result
             

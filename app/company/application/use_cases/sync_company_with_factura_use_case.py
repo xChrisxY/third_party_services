@@ -4,7 +4,7 @@ from ...infrastructure.services.factura_client import FacturaClient
 import json
 import asyncio
 import logging
-import datetime
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -129,3 +129,5 @@ class SyncCompanyWithFacturaUseCase:
             
         except Exception as e:
            logger.error(f"Could not update company with Factura.com credentials: {str(e)}")
+
+    
