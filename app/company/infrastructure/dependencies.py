@@ -10,6 +10,20 @@ from ..application.use_cases.delete_company_use_case import DeleteCompanyUseCase
 
 from .controllers.company_controller import CompanyController
 
+from ..infrastructure.services.factura_client import FacturaClient
+from ..application.use_cases.sync_company_with_factura_use_case import SyncCompanyWithFacturaUseCase
+
+@lru_cache()
+def get_factura_client() -> FacturaClient: 
+    return FacturaClient()
+
+@lru_cache()
+def get_sync_company_use_case() -> SyncCompanyWithFacturaUseCase:
+    company_repository = get_company_repository()
+    factura_client = get_factura_client()
+    return SyncCompanyWithFacturaUseCase(company_repository, factura_client)
+
+
 @lru_cache()
 def get_company_repository() -> CompanyRepository: 
     database = get_database()
