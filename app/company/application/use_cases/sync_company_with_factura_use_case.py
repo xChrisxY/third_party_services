@@ -1,10 +1,12 @@
 from typing import Dict, Any
+from ...domain.entities.company import Company
 from ...domain.repositories.company_repository import CompanyRepository
 from ...infrastructure.services.factura_client import FacturaClient
 import json
 import asyncio
 import logging
 from datetime import datetime
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +37,37 @@ class SyncCompanyWithFacturaUseCase:
                 await asyncio.sleep(2) 
                 credentials = await self.factura_client.get_company_credentials(factura_uid)
                 
-                await self._update_company_with_credentials(
-                    event_data.get('company_id'), 
-                    factura_company_id,
+                #await self._update_company_with_credentials(
+                #    event_data.get('company_id'), 
+                #    factura_company_id,
+                #    credentials
+                #)
+                
+                company_id = await self._create_company_in_database(
+                    event_data, 
+                    factura_company_id, 
                     credentials
                 )
+
+                await asyncio.sleep(3)
+                credentials_response = await self.factura_client.get_company_credentials(factura_uid)
+
+                if credentials_response.get("status") == "success":
+                    await self._update_company_with_real_credentials(
+                        str(company_id), 
+                        credentials_response.get('data', {})
+                    )
+
+                    logger.info(f"Credenciales REALES obtenidas y guardadas para empresa {company_id}")
                 
                 return {
                     "success": True,
+                    "company_id" : company_id,
                     "factura_company_id": factura_company_id,
                     "factura_uid": factura_uid,
                     "credentials": credentials,
-                    "data": response
+                    "data": response, 
+                    "message": "Company succesfully created in both Factura.com and local database"
                 }
             else:
                 error_msg = response.get('message', 'Unknown error from Factura.com')
@@ -113,21 +134,105 @@ class SyncCompanyWithFacturaUseCase:
         
         return form_data
 
-    async def _update_company_with_credentials(self, company_id: str, factura_id: str, credentials: Dict[str, Any]):
+    async def _update_company_with_real_credentials(self, company_id: str, real_credentials: Dict[str, Any]):
         try:
+            logger.info(f"Credenciales recibidas: {json.dumps(real_credentials, indent=2)}")
+            
             update_data = {
-                "metadata.factura_com_id": factura_id,
-                "metadata.factura_uid": credentials.get('data', {}).get('uid'),
-                "metadata.factura_api_key": credentials.get('data', {}).get('api_key'),
-                "metadata.factura_secret_key": credentials.get('data', {}).get('secret_key'),
-                "metadata.synced_with_factura": True,
-                "metadata.sync_date": datetime.now().isoformat()
+                "metadata.apiKey": real_credentials.get('api_key'),    
+                "metadata.apiSecret": real_credentials.get('secret_key'), 
+                "metadata.thpFcUid": real_credentials.get('uid', ''),
+                #"metadata.razonSocial": real_credentials.get('razon_social', ''),
+                #"metadata.rfc": real_credentials.get('rfc', ''),
+                #"metadata.regimenFiscal": real_credentials.get('regimen_fiscal', ''),
+                "metadata.updatedAt": datetime.now().isoformat(),
+                #"metadata.credentialStatus": "decrypted" 
             }
             
+            logger.info(f"Datos de actualización: {json.dumps(update_data, indent=2)}")
+            
             await self.company_repository.update(company_id, update_data)
-            logger.info(f"Empresa actualizada con credenciales de Factura.com")
+            
+                
+        except Exception as e:
+            logger.error(f"Error actualizando credenciales REALES: {str(e)}")
+            raise
+
+
+    async def _create_company_in_database(self, event_data: Dict[str, Any], factura_id: str, credentials: Dict[str, Any]) -> str:
+        try:
+            credentials_data = credentials.get('data', {})
+            
+            company_dict = {
+                "tenant_id": event_data.get("company_id", str(uuid.uuid4())), 
+                "business_name": event_data.get("business_name"),
+                "trade_name": event_data.get("trade_name"),
+                
+                "source": {
+                    "service": "external",
+                    "serviceId": event_data.get("company_id"),
+                    "referralCode": None
+                },
+                
+                "contact": {
+                    "name": event_data.get("contact", {}).get("name", ""),
+                    "phone": event_data.get("contact", {}).get("phone", ""),
+                    "email": event_data.get("emails", {}).get("contact", "")
+                },
+                
+                "fiscal_data": {
+                    "legalName": event_data.get("business_name", ""),
+                    "taxId": event_data.get("fiscal_data", {}).get("tax_id", ""),
+                    "taxRegime": event_data.get("fiscal_data", {}).get("tax_regime", ""),
+                    "zipCode": event_data.get("fiscal_data", {}).get("zip_code", ""),
+                    "street": event_data.get("fiscal_data", {}).get("street", ""),
+                    "extNumber": event_data.get("fiscal_data", {}).get("ext_number", ""),
+                    "intNumber": event_data.get("fiscal_data", {}).get("int_number"),
+                    "neighborhood": event_data.get("fiscal_data", {}).get("neighborhood", ""),
+                    "state": event_data.get("fiscal_data", {}).get("state", ""),
+                    "city": event_data.get("fiscal_data", {}).get("city", ""),
+                    "country": "México"
+                },
+                
+                "emails": {
+                    "contact": event_data.get("emails", {}).get("contact", ""),
+                    "owner": event_data.get("emails", {}).get("contact", ""), 
+                    "billing": event_data.get("emails", {}).get("contact", ""),
+                    "accountant": event_data.get("emails", {}).get("accounting", "")
+                },
+                
+                "configs": {
+                    "sendCopyToClient": True,
+                    "sendCopyToAccountant": bool(event_data.get("emails", {}).get("accounting")),
+                    "notifications": {
+                        "whatsapp": False,
+                        "slack": False,
+                        "webhookUrl": None
+                    }
+                },
+                
+                "metadata": {
+                    "apiKey": credentials_data.get('api_key'),     
+                    "apiSecret": credentials_data.get('secret_key'), 
+                    "thpFcUid": credentials_data.get('uid'),  
+                    "createdAt": datetime.now().isoformat(),
+                    "updatedAt": datetime.now().isoformat(),
+                    "status": "active"
+                }
+            }
+            
+            company_model = Company(**company_dict)
+            created_company = await self.company_repository.create(company_model)
+            if hasattr(created_company, 'inserted_id'):
+                company_id = str(created_company.inserted_id)
+            elif hasattr(created_company, 'id'):
+                company_id = str(created_company.id)
+            else:
+                company_id = str(created_company)
+            
+            logger.info(f"Empresa creada en BD con ObjectId: {company_id}")
+            return company_id
             
         except Exception as e:
-           logger.error(f"Could not update company with Factura.com credentials: {str(e)}")
-
-    
+            logger.error(f"Error creando empresa en BD: {str(e)}")
+            raise
