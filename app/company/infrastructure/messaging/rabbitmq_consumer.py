@@ -4,7 +4,7 @@ import asyncio
 import logging
 from config.settings import settings
 from ...application.use_cases.sync_company_with_factura_use_case import SyncCompanyWithFacturaUseCase
-from ...infrastructure.services.factura_client import FacturaClient
+from ..dependencies import get_external_company_repository
 from ...infrastructure.repositories.mongodb_company_repository import MongoDBCompanyRepository
 from config.database import connect_to_mongo, get_database
 
@@ -25,11 +25,11 @@ class RabbitMQConsumer:
             logger.info("MongoDB conectado exitosamente")
 
             company_repository = MongoDBCompanyRepository(database)
-            factura_client = FacturaClient()
+            external_company_repository = get_external_company_repository()
 
             self.sync_use_case = SyncCompanyWithFacturaUseCase(
                 company_repository,
-                factura_client
+                external_company_repository
             )
 
             logger.info(f"Conectando a RabbitMQ en {settings.rabbitmq_host}:{settings.rabbitmq_port}...")

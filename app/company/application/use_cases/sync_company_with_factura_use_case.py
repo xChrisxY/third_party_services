@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from ...domain.entities.company import Company
 from ...domain.repositories.company_repository import CompanyRepository
-from ...infrastructure.services.factura_client import FacturaClient
+from ...domain.repositories.external_company_repository import ExternalCompanyRepository
 import json
 import asyncio
 import logging
@@ -14,10 +14,11 @@ class SyncCompanyWithFacturaUseCase:
     def __init__(
         self, 
         company_repository: CompanyRepository,
-        factura_client: FacturaClient
+        external_company_repository: ExternalCompanyRepository
+
     ):
         self.company_repository = company_repository
-        self.factura_client = factura_client
+        self.external_company_repository = external_company_repository
 
     async def execute(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -26,7 +27,8 @@ class SyncCompanyWithFacturaUseCase:
             company_data = self._map_to_factura_format(event_data)
             logger.info(f"Datos mapeados para Factura: {json.dumps(company_data, indent=2)}")
             
-            response = await self.factura_client.create_company(company_data)
+            response = await self.external_company_repository.create_company(company_data)
+            #response = await self.factura_client.create_company(company_data)
             
             if response.get('status') == 'create': 
                 factura_company_id = response.get('0', {}).get('acco_id')
@@ -35,7 +37,7 @@ class SyncCompanyWithFacturaUseCase:
                 logger.info(f"¡ÉXITO! Compañía creada con ID: {factura_company_id}, UID: {factura_uid}")
                 
                 await asyncio.sleep(2) 
-                credentials = await self.factura_client.get_company_credentials(factura_uid)
+                credentials = await self.external_company_repository.get_company_credentials(factura_uid)
                 
                 #await self._update_company_with_credentials(
                 #    event_data.get('company_id'), 
@@ -50,7 +52,7 @@ class SyncCompanyWithFacturaUseCase:
                 )
 
                 await asyncio.sleep(3)
-                credentials_response = await self.factura_client.get_company_credentials(factura_uid)
+                credentials_response = await self.external_company_repository.get_company_credentials(factura_uid)
 
                 if credentials_response.get("status") == "success":
                     await self._update_company_with_real_credentials(

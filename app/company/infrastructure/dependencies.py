@@ -10,19 +10,16 @@ from ..application.use_cases.delete_company_use_case import DeleteCompanyUseCase
 
 from .controllers.company_controller import CompanyController
 
-from ..infrastructure.services.factura_client import FacturaClient
+from .services.factura_client_adapter import FacturaClientAdapter
+from ..domain.repositories.external_company_repository import ExternalCompanyRepository
 from ..application.use_cases.sync_company_with_factura_use_case import SyncCompanyWithFacturaUseCase
 
-@lru_cache()
-def get_factura_client() -> FacturaClient: 
-    return FacturaClient()
 
 @lru_cache()
 def get_sync_company_use_case() -> SyncCompanyWithFacturaUseCase:
     company_repository = get_company_repository()
-    factura_client = get_factura_client()
-    return SyncCompanyWithFacturaUseCase(company_repository, factura_client)
-
+    external_company_repository = get_external_company_repository()
+    return SyncCompanyWithFacturaUseCase(company_repository, external_company_repository)
 
 @lru_cache()
 def get_company_repository() -> CompanyRepository: 
@@ -48,6 +45,10 @@ def get_update_company_use_case() -> UpdateCompanyUseCase:
 def get_delete_company_use_case() -> DeleteCompanyUseCase: 
     company_repository = get_company_repository()
     return DeleteCompanyUseCase(company_repository)
+
+@lru_cache()
+def get_external_company_repository() -> ExternalCompanyRepository:
+    return FacturaClientAdapter()
 
 @lru_cache() 
 def get_company_controller() -> CompanyController: 
