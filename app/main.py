@@ -6,6 +6,7 @@ from config.settings import settings
 from config.database import connect_to_mongo, close_mongo_connection 
 
 from company.infrastructure.routers.company_router import router as company_router 
+from client.infrastructure.routers.client_router import router as client_router
 
 @asynccontextmanager 
 async def lifespan(app: FastAPI): 
@@ -42,4 +43,5 @@ async def health_check():
     }
 
 app.include_router(company_router) 
+app.include_router(client_router)
 

@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     rabbitmq_vhost: str = "/"
     
     company_created_queue: str = "company_created"
-    company_created_routing_key: str = "company.created"
+    company_created_routing_key: str = "company_created"
+
+    client_created_queue: str = "client_created"
+    client_created_routing_key: str = "client_created"
     
     factura_com_api_key: str
     factura_com_secret_key: str

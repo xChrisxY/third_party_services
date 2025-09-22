@@ -30,7 +30,7 @@ services:
   third_party_consumer:
     build: .
     container_name: third_party_consumer
-    command: sh -c "sleep 10 && python -m company.infrastructure.messaging.rabbitmq_consumer"
+    command: sh -c "sleep 10 && python -m shared.infrastructure.messaging.consumer_main"
     volumes:
       - ./app:/app
     environment:
