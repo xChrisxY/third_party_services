@@ -11,12 +11,12 @@ services:
     environment: 
       - MONGO_HOST=third_party_mongo 
       - MONGO_PORT=27017 
-      - MONGO_USER=admin 
-      - MONGO_PASS=secret123 
+      - MONGO_USER=${MONGO_USER}
+      - MONGO_PASS=${MONGO_PASS}
       - RABBITMQ_HOST=rabbitmq 
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USERNAME=guest 
-      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_USERNAME=${RABBITMQ_USERNAME} 
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
       - FACTURA_COM_API_KEY=${FACTURA_COM_API_KEY}
       - FACTURA_COM_SECRET_KEY=${FACTURA_COM_SECRET_KEY}
     env_file: 
@@ -36,13 +36,13 @@ services:
     environment:
       - MONGO_HOST=third_party_mongo 
       - MONGO_PORT=27017 
-      - MONGO_USER=admin 
-      - MONGO_PASS=secret123 
+      - MONGO_USER=${MONGO_USER} 
+      - MONGO_PASS=${MONGO_PASS}
       - MONGO_DB=third_party_db
       - RABBITMQ_HOST=rabbitmq 
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USERNAME=guest 
-      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_USERNAME=${RABBITMQ_USERNAME} 
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
       - FACTURA_COM_API_KEY=${FACTURA_COM_API_KEY}
       - FACTURA_COM_SECRET_KEY=${FACTURA_COM_SECRET_KEY}
     depends_on:
@@ -57,8 +57,8 @@ services:
     ports: 
       - "27017:27017"
     environment: 
-      - MONGO_INITDB_ROOT_USERNAME=admin 
-      - MONGO_INITDB_ROOT_PASSWORD=secret123
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASS}
     volumes: 
       - mongo_data:/data/db
 

@@ -1,4 +1,3 @@
-# app/company/infrastructure/messaging/rabbitmq_consumer.py
 import aio_pika
 import json
 import asyncio

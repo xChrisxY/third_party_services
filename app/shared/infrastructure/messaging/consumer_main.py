@@ -12,7 +12,6 @@ async def main():
     try:
         consumer = RabbitMQConsumer()
         
-        # Registrar handlers
         consumer.register_handler(
             settings.company_created_routing_key,
             handle_company_created_event
@@ -26,9 +25,9 @@ async def main():
         await consumer.consume()
         
     except KeyboardInterrupt:
-        logger.info("🛑 Consumer detenido por el usuario")
+        logger.info("Consumer detenido por el usuario")
     except Exception as e:
-        logger.error(f"💥 Error inesperado: {str(e)}")
+        logger.error(f"Error inesperado: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
