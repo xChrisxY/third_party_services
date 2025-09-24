@@ -108,6 +108,8 @@ class RabbitMQConsumer:
                     queue_name = settings.company_created_queue
                 elif routing_key == settings.client_created_routing_key:
                     queue_name = settings.client_created_queue
+                elif routing_key == settings.invoice_request_routing_key:
+                    queue_name = settings.invoice_request_queue
                 else:
                     queue_name = f"{routing_key.replace('.', '_')}_queue"
                 

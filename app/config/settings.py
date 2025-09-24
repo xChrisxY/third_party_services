@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     client_created_queue: str = "client_created"
     client_created_routing_key: str = "client_created"
+
+    invoice_request_queue: str = "invoice_request"
+    invoice_request_routing_key: str = "invoice_request"
     
     factura_com_api_key: str
     factura_com_secret_key: str

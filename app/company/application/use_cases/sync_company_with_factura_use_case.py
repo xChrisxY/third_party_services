@@ -64,11 +64,8 @@ class SyncCompanyWithFacturaUseCase:
                 
                 return {
                     "success": True,
-                    "company_id" : company_id,
                     "factura_company_id": factura_company_id,
                     "factura_uid": factura_uid,
-                    "credentials": credentials,
-                    "data": response, 
                     "message": "Company succesfully created in both Factura.com and local database"
                 }
             else:

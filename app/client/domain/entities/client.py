@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List 
 from datetime import datetime
 
@@ -6,7 +6,7 @@ from .client_address import ClientAddress
 from .client_contact import ClientContact
 
 class Client(BaseModel): 
-    id: Optional[str] = None
+    id: Optional[str] = Field(default=None, alias="_id")
     tenant_id: str 
     external_uid: Optional[str] = None
     

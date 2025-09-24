@@ -24,3 +24,15 @@ class MongoDBClientRepository(ClientRepository):
 
     async def get_by_id(self, client_id):
         return await super().get_by_id(client_id)
+
+    async def find_by_rfc(self, client_rfc):
+        try:
+            client_doc = await self.collection.find_one({"rfc": client_rfc})
+
+            if client_doc: 
+                client_doc["_id"] = str(client_doc["_id"])
+                return Client(**client_doc)
+            
+            return None
+        except Exception: 
+            return None

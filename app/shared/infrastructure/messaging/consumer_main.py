@@ -3,6 +3,7 @@ import logging
 from .rabbitmq_consumer import RabbitMQConsumer
 from .event_handlers.company_event_handler import handle_company_created_event
 from .event_handlers.client_event_handler import handle_client_created_event
+from .event_handlers.invoice_event_handler import handle_invoice_request_event
 from config.settings import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +21,11 @@ async def main():
         consumer.register_handler(
             settings.client_created_routing_key, 
             handle_client_created_event
+        )
+
+        consumer.register_handler(
+            settings.invoice_request_routing_key, 
+            handle_invoice_request_event
         )
         
         await consumer.consume()
