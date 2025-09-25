@@ -30,7 +30,6 @@ class RabbitMQConsumer:
             database = get_database()
             logger.info("MongoDB conectado exitosamente")
 
-            # Configurar use case para empresas
             company_repository = MongoDBCompanyRepository(database)
             external_company_repository = get_external_company_repository()
             self.company_sync_use_case = SyncCompanyWithFacturaUseCase(
@@ -38,7 +37,6 @@ class RabbitMQConsumer:
                 external_company_repository
             )
 
-            # Configurar use case para clientes
             client_repository = MongoDBClientRepository(database)
             external_client_repository = get_external_client_repository()
             self.client_sync_use_case = SyncClientWithFacturaUseCase(
@@ -67,7 +65,6 @@ class RabbitMQConsumer:
     async def setup_queues(self):
         queues = {}
         
-        # Configurar cola para empresas
         logger.info(f"Creando cola: {settings.company_created_queue}")
         company_queue = await self.channel.declare_queue(
             settings.company_created_queue,
@@ -89,7 +86,6 @@ class RabbitMQConsumer:
         )
         queues[settings.company_created_routing_key] = company_queue
 
-        # Configurar cola para clientes
         logger.info(f"Creando cola: {settings.client_created_queue}")
         client_queue = await self.channel.declare_queue(
             settings.client_created_queue,
@@ -170,7 +166,6 @@ class RabbitMQConsumer:
             await self.connect()
             queues = await self.setup_queues()
 
-            # Suscribirse a ambas colas
             company_queue = queues[settings.company_created_routing_key]
             client_queue = queues[settings.client_created_routing_key]
 
