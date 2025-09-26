@@ -26,6 +26,14 @@ class InvoiceClientUseCase:
     async def execute(self, invoice_data: Dict[str, Any]) -> Dict[str, Any]: 
         
         try: 
+
+            validation_result = await self._validate_input_data(invoice_data)
+            if not validation_result["valid"]:
+                return {
+                    "success": False,
+                    "error": f"Datos inválidos: {validation_result['error']}"
+                }
+            
             rfc = invoice_data.get("rfc")
             business_name = invoice_data.get("business_name")
             
@@ -135,6 +143,9 @@ class InvoiceClientUseCase:
                 emails.append(event_data.get("contact", {}).get("email2"))
             if event_data.get("contact", {}).get("email3"):
                 emails.append(event_data.get("contact", {}).get("email3"))
+
+            tax_regime_name = await self._get_tax_regime_name(event_data.get("tax_regime"))
+            cfdi_use_name = await self._get_cfdi_use_name(event_data.get("cfdi_use"))
             
             client_dict = {
                 "tenant_id": event_data.get("tenant_id", str(uuid.uuid4())),
@@ -142,12 +153,12 @@ class InvoiceClientUseCase:
                 "rfc": event_data.get("rfc"),
                 "business_name": event_data.get("business_name"),
                 "tax_regime": event_data.get("tax_regime"),
-                "tax_regime_name": self._get_tax_regime_name(event_data.get("tax_regime")),
+                "tax_regime_name": tax_regime_name,
                 "tax_id_number": event_data.get("tax_id_number", ""),
                 "address": address,
                 "contact": contact,
                 "cfdi_use": event_data.get("cfdi_use"),
-                "cfdi_use_name": self._get_cfdi_use_name(event_data.get("cfdi_use")),
+                "cfdi_use_name" : cfdi_use_name,
                 "created_at": datetime.now(),
                 "updated_at": datetime.now(),
                 "status": "active",
@@ -221,53 +232,62 @@ class InvoiceClientUseCase:
         except Exception as e:
             logger.error(f"Error en mapeo de datos: {str(e)}")
             raise
-    def _get_tax_regime_name(self, regime_code: str) -> str:
-        regime_map = {
-            "601": "General de Ley Personas Morales",
-            "603": "Personas Morales con Fines no Lucrativos",
-            "605": "Sueldos y Salarios e Ingresos Asimilados a Salarios",
-            "606": "Arrendamiento",
-            "607": "Régimen de Enajenación o Adquisición de Bienes",
-            "608": "Demás ingresos",
-            "610": "Residentes en el Extranjero sin Establecimiento Permanente en México",
-            "611": "Ingresos por Dividendos (socios y accionistas)",
-            "612": "Personas Físicas con Actividades Empresariales y Profesionales",
-            "614": "Ingresos por intereses",
-            "615": "Régimen de los ingresos por obtención de premios",
-            "616": "Sin obligaciones fiscales",
-            "620": "Sociedades Cooperativas de Producción que optan por diferir sus ingresos",
-            "621": "Incorporación Fiscal",
-            "622": "Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras",
-            "623": "Opcional para Grupos de Sociedades",
-            "624": "Coordinados",
-            "625": "Régimen de las Actividades Empresariales con ingresos a través de Plataformas Tecnológicas",
-            "626": "Régimen Simplificado de Confianza"
-        }
-        return regime_map.get(regime_code, "")
 
-    def _get_cfdi_use_name(self, cfdi_use: str) -> str:
-        cfdi_use_map = {
-            "G01": "Adquisición de mercancias",
-            "G02": "Devoluciones, descuentos o bonificaciones",
-            "G03": "Gastos en general",
-            "I01": "Construcciones",
-            "I02": "Mobiliario y equipo de oficina por inversiones",
-            "I03": "Equipo de transporte",
-            "I04": "Equipo de computo y accesorios",
-            "I05": "Dados, troqueles, moldes, matrices y herramental",
-            "I06": "Comunicaciones telefónicas",
-            "I07": "Comunicaciones satelitales",
-            "I08": "Otra maquinaria y equipo",
-            "D01": "Honorarios médicos, dentales y gastos hospitalarios",
-            "D02": "Gastos médicos por incapacidad o discapacidad",
-            "D03": "Gastos funerales",
-            "D04": "Donativos",
-            "D05": "Intereses reales efectivamente pagados por créditos hipotecarios",
-            "D06": "Aportaciones voluntarias al SAR",
-            "D07": "Primas por seguros de gastos médicos",
-            "D08": "Gastos de transportación escolar obligatoria",
-            "D09": "Depósitos en cuentas para el ahorro, primas que tengan como base planes de pensiones",
-            "D10": "Pagos por servicios educativos",
-            "P01": "Por definir"
-        }
-        return cfdi_use_map.get(cfdi_use, "")
+    async def _validate_input_data(self, invoice_data: Dict[str, Any]) -> Dict[str, Any]:  
+        errors = []
+        
+        tax_regime = invoice_data.get("tax_regime")
+        if tax_regime:
+            regime_validation = await self.external_client_repository.validate_tax_regime(tax_regime)
+            if not regime_validation["valid"]:
+                errors.append(regime_validation["error"])
+            
+        cfdi_use = invoice_data.get("cfdi_use")    
+        if cfdi_use: 
+            cfdi_validation = await self.external_client_repository.validate_cfdi_use(cfdi_use, tax_regime)
+            
+            if not cfdi_validation["valid"]:
+                errors.append(cfdi_validation["error"])
+
+        country = invoice_data.get("address", {}).get("country", "MEX")
+        if country: 
+            country_validation = await self.external_client_repository.validate_country(country)
+            if not country_validation:
+                errors.append(f"País no válido: {country}")
+
+        if errors:
+            return {"valid": False, "error": "; ".join(errors)}
+
+        return {"valid": True}
+
+    async def _get_tax_regime_name(self, regime_code: str) -> str: 
+        if not regime_code:
+            return ""
+        
+        try: 
+            
+            validation_result = await self.external_client_repository.validate_tax_regime(regime_code)
+            if validation_result["valid"]:
+                return validation_result["name"]
+            else:
+                logger.warning(f"Régimen {regime_code} no encontrado en catálogo: {validation_result.get('error')}")
+            
+        except Exception as e: 
+            logger.error(f"Error obteniendo el nombre de régimen: {str(e)}")
+            return ""
+
+    async def _get_cfdi_use_name(self, cfdi_use: str) -> str: 
+        if not cfdi_use: 
+            return ""
+        
+        try: 
+            validation_result = await self.external_client_repository.validate_cfdi_use(cfdi_use)
+            
+            if validation_result["valid"]:
+                return validation_result["name"]
+            else: 
+                logger.error(f"Uso CFDI {cfdi_use} no encontrado en catálogo: {validation_result}")
+                return ""
+        except Exception as e: 
+                logger.warning(f"Error obteniendo nombre de uso CFDI: {str(e)}")
+                return ""
