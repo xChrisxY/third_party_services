@@ -1,5 +1,6 @@
 from typing import List, Optional 
 from bson import ObjectId 
+from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase 
 
 from ...domain.entities.company import Company 
@@ -16,6 +17,12 @@ class MongoDBCompanyRepository(CompanyRepository):
     async def create(self, company: Company) -> Company: 
         
         company_dict = company.model_dump(by_alias=True, exclude={"id"})
+        if 'series' in company_dict: 
+            for serie in company_dict['series']: 
+                if 'createdAt' not in serie: 
+                    serie['createdAt'] = datetime.now(timezone.utc).isoformat()
+                if 'updatedAt' not in serie: 
+                    serie['updatedAt'] = datetime.now(timezone.utc).isoformat()
         result = await self.collection.insert_one(company_dict)
         created_company = await self.collection.find_one({"_id": result.inserted_id})
 

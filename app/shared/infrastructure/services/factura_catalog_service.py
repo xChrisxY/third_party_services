@@ -90,7 +90,7 @@ class FacturaCatalogService:
             
             base_url = self.base_url.replace('/v4', '')
             response = await self.client.get(
-                "f{base_url}/v3/catalogo/Pais", 
+                f"{base_url}/v3/catalogo/Pais", 
                 headers=headers
             )
             

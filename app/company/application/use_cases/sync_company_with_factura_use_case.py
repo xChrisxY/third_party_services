@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 from ...domain.entities.company import Company
 from ...domain.repositories.company_repository import CompanyRepository
 from ...domain.repositories.external_company_repository import ExternalCompanyRepository
@@ -26,29 +26,32 @@ class SyncCompanyWithFacturaUseCase:
             
             company_data = self._map_to_factura_format(event_data)
             logger.info(f"Datos mapeados para Factura: {json.dumps(company_data, indent=2)}")
+
+            series_to_create = event_data.get("series", [])
+            has_new_series = len(series_to_create) > 0
             
             response = await self.external_company_repository.create_company(company_data)
-            #response = await self.factura_client.create_company(company_data)
             
             if response.get('status') == 'create': 
                 factura_company_id = response.get('0', {}).get('acco_id')
                 factura_uid = response.get('0', {}).get('acco_uid')
                 
                 logger.info(f"¡ÉXITO! Compañía creada con ID: {factura_company_id}, UID: {factura_uid}")
+
+                company_series = await self._process_series(
+                    factura_uid, 
+                    has_new_series, 
+                    series_to_create
+                )
                 
                 await asyncio.sleep(2) 
                 credentials = await self.external_company_repository.get_company_credentials(factura_uid)
                 
-                #await self._update_company_with_credentials(
-                #    event_data.get('company_id'), 
-                #    factura_company_id,
-                #    credentials
-                #)
-                
                 company_id = await self._create_company_in_database(
                     event_data, 
                     factura_company_id, 
-                    credentials
+                    credentials, 
+                    company_series
                 )
 
                 await asyncio.sleep(3)
@@ -157,8 +160,43 @@ class SyncCompanyWithFacturaUseCase:
             logger.error(f"Error actualizando credenciales REALES: {str(e)}")
             raise
 
+    async def _process_series(self, company_uid: str, has_new_series: bool, new_series: List[Dict[str, Any]]): 
+        
+        try: 
+            if has_new_series: 
+                logger.info(f"Creando {len(new_series)} nuevas series en base de datos")
 
-    async def _create_company_in_database(self, event_data: Dict[str, Any], factura_id: str, credentials: Dict[str, Any]) -> str:
+                mapped_series = []
+                for serie in new_series:
+                    mapped_series.append({
+                        "name": serie.get("name"),
+                        "type": serie.get("type", "factura"),
+                        "description": serie.get("description", f"Serie {serie.get('name')}"),
+                        "branch_id": serie.get("branch_id"),
+                        "initial_folio": serie.get("initial_folio", 1)
+                    })
+                
+                created_series = await self.external_company_repository.create_series(company_uid, new_series)
+                return created_series
+            else: 
+                logger.info("No hay nuevas series, obteniendo serie por defecto de Factura.com")
+                default_series = await self.external_company_repository.get_default_series(company_uid)
+                if default_series: 
+                    return [default_series]
+                else:  
+                    logger.warning("No se pudo obtener serie por defecto, retornando lista vacía")
+                    return []
+        except Exception as e: 
+            logger.error(f"Error procesando series: {str(e)}")
+            return []
+
+    async def _create_company_in_database(
+        self, 
+        event_data: Dict[str, Any], 
+        factura_id: str, 
+        credentials: Dict[str, Any], 
+        company_series: List[Dict[str, Any]]
+    ) -> str:
         try:
             credentials_data = credentials.get('data', {})
             
@@ -217,7 +255,9 @@ class SyncCompanyWithFacturaUseCase:
                     "createdAt": datetime.now().isoformat(),
                     "updatedAt": datetime.now().isoformat(),
                     "status": "active"
-                }
+                }, 
+                
+                "series": company_series
             }
             
             company_model = Company(**company_dict)

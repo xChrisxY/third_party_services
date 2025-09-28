@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 
 from .source import Source 
 from .fiscal_data import FiscalData 
@@ -7,6 +7,7 @@ from .emails import Emails
 from .contact import Contact 
 from .configs import Configs
 from .metadata import Metadata
+from .series import Series
 
 class Company(BaseModel): 
     id: Optional[str] = Field(None, alias="_id", description="ObjectId")
@@ -20,6 +21,7 @@ class Company(BaseModel):
     emails: Emails 
     configs: Configs 
     metadata: Metadata
+    series: List[Series] = Field(default=[], description="Billing series list")
 
     class Config: 
         populate_by_name = True 
