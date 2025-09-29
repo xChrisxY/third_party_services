@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     factura_com_secret_key: str
     factura_com_api_url: str = "https://sandbox.factura.com/api/v4"
 
+    encryption_key: str
+
     allowed_origins: list = ["http://localhost:8000"]
 
     class Config: 

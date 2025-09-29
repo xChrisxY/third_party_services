@@ -12,14 +12,18 @@ from .controllers.company_controller import CompanyController
 
 from .services.factura_client_adapter import FacturaClientAdapter
 from ..domain.repositories.external_company_repository import ExternalCompanyRepository
+from ..domain.repositories.credential_repository import CredentialRepository
 from ..application.use_cases.sync_company_with_factura_use_case import SyncCompanyWithFacturaUseCase
+from .security.company_credential_service import CompanyCredentialService
+from shared.infrastructure.security.crypto_service import CrytoService
 
 
 @lru_cache()
 def get_sync_company_use_case() -> SyncCompanyWithFacturaUseCase:
     company_repository = get_company_repository()
     external_company_repository = get_external_company_repository()
-    return SyncCompanyWithFacturaUseCase(company_repository, external_company_repository)
+    credential_repository = get_credential_repository()
+    return SyncCompanyWithFacturaUseCase(company_repository, external_company_repository, credential_repository)
 
 @lru_cache()
 def get_company_repository() -> CompanyRepository: 
@@ -49,6 +53,11 @@ def get_delete_company_use_case() -> DeleteCompanyUseCase:
 @lru_cache()
 def get_external_company_repository() -> ExternalCompanyRepository:
     return FacturaClientAdapter()
+
+@lru_cache()
+def get_credential_repository() -> CredentialRepository: 
+    encryption_service = CrytoService()
+    return CompanyCredentialService(encryption_service)
 
 @lru_cache() 
 def get_company_controller() -> CompanyController: 

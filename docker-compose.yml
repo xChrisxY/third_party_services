@@ -19,6 +19,7 @@ services:
       - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
       - FACTURA_COM_API_KEY=${FACTURA_COM_API_KEY}
       - FACTURA_COM_SECRET_KEY=${FACTURA_COM_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     env_file: 
       - .env 
     command: >
@@ -45,6 +46,9 @@ services:
       - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
       - FACTURA_COM_API_KEY=${FACTURA_COM_API_KEY}
       - FACTURA_COM_SECRET_KEY=${FACTURA_COM_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    env_file: 
+      - .env 
     depends_on:
       rabbitmq:
         condition: service_healthy

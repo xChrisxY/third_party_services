@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 from ...domain.entities.company import Company
 from ...domain.repositories.company_repository import CompanyRepository
 from ...domain.repositories.external_company_repository import ExternalCompanyRepository
+from ...domain.repositories.credential_repository import CredentialRepository
 import json
 import asyncio
 import logging
@@ -14,11 +15,13 @@ class SyncCompanyWithFacturaUseCase:
     def __init__(
         self, 
         company_repository: CompanyRepository,
-        external_company_repository: ExternalCompanyRepository
+        external_company_repository: ExternalCompanyRepository, 
+        credential_repository: CredentialRepository
 
     ):
         self.company_repository = company_repository
         self.external_company_repository = external_company_repository
+        self.credential_repository = credential_repository
 
     async def execute(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -139,10 +142,12 @@ class SyncCompanyWithFacturaUseCase:
     async def _update_company_with_real_credentials(self, company_id: str, real_credentials: Dict[str, Any]):
         try:
             logger.info(f"Credenciales recibidas: {json.dumps(real_credentials, indent=2)}")
+
+            encrypted_credentials = await self.credential_repository.encrypt_credentials(real_credentials)
             
             update_data = {
-                "metadata.apiKey": real_credentials.get('api_key'),    
-                "metadata.apiSecret": real_credentials.get('secret_key'), 
+                "metadata.apiKey": encrypted_credentials.get('api_key'),    
+                "metadata.apiSecret": encrypted_credentials.get('secret_key'), 
                 "metadata.thpFcUid": real_credentials.get('uid', ''),
                 #"metadata.razonSocial": real_credentials.get('razon_social', ''),
                 #"metadata.rfc": real_credentials.get('rfc', ''),
@@ -199,7 +204,7 @@ class SyncCompanyWithFacturaUseCase:
     ) -> str:
         try:
             credentials_data = credentials.get('data', {})
-            
+
             company_dict = {
                 "tenant_id": event_data.get("company_id", str(uuid.uuid4())), 
                 "business_name": event_data.get("business_name"),
