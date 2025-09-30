@@ -10,6 +10,7 @@ from ...domain.entities.client_address import ClientAddress
 from ...domain.entities.client_contact import ClientContact
 from ...domain.repositories.client_repository import ClientRepository
 from ...domain.repositories.external_client_repository import ExternalClientRepository
+from company.domain.repositories.company_repository import CompanyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +19,30 @@ class SyncClientWithFacturaUseCase:
     def __init__(
         self, 
         client_repository: ClientRepository, 
-        external_client_repository: ExternalClientRepository
+        external_client_repository: ExternalClientRepository, 
+        company_repository: CompanyRepository
     ):
         self.client_repository = client_repository
         self.external_client_repository = external_client_repository
+        self.company_repository = company_repository
 
     async def execute(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
+
+            company_id = event_data.get("company_id")
+            if not company_id: 
+                return {
+                    "success": False, 
+                    "error": "company_id es requerido para facturar"
+                }
+
+            company = await self.company_repository.get_by_id(company_id)
+            if not company: 
+                return {
+                    "success": False, 
+                    "error": f"Empresa no encontrada: {company_id}"
+                }   
+            
             logger.info(f"Datos recibidos del evento cliente: {json.dumps(event_data, indent=2)}")
 
             client_data = self._map_to_factura_format(event_data)
@@ -148,6 +166,7 @@ class SyncClientWithFacturaUseCase:
             client_dict = {
                 "tenant_id": event_data.get("tenant_id", str(uuid.uuid4())),
                 "external_uid": factura_uid,
+                "company_id": event_data.get("company_id"),
                 "rfc": event_data.get("rfc"),
                 "business_name": event_data.get("business_name"),
                 "tax_regime": event_data.get("tax_regime"),

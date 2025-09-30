@@ -9,6 +9,7 @@ class Client(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
     tenant_id: str 
     external_uid: Optional[str] = None
+    company_id: Optional[str] = Field(None, description="ID de la empresa que factura que factura para este cliente")
     
     rfc: str
     business_name: str

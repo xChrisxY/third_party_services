@@ -15,5 +15,9 @@ class ClientRepository(ABC):
     @abstractmethod 
     async def find_by_rfc(self, client_rfc: str) -> Optional[Client]:
         pass
+
+    @abstractmethod
+    async def find_by_company(self, rfc: str, company_id: str) -> Optional[Client]:
+        pass
     
     

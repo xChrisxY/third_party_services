@@ -11,6 +11,9 @@ from ...domain.entities.client_contact import ClientContact
 from ...domain.repositories.client_repository import ClientRepository 
 from ...domain.repositories.external_client_repository import ExternalClientRepository
 
+from company.domain.repositories.company_repository import CompanyRepository
+from shared.responses import ErrorResponse
+
 logger = logging.getLogger(__name__)
 
 class InvoiceClientUseCase: 
@@ -18,14 +21,32 @@ class InvoiceClientUseCase:
     def __init__(
         self, 
         client_repository: ClientRepository, 
-        external_client_repository: ExternalClientRepository
+        external_client_repository: ExternalClientRepository, 
+        company_repository: CompanyRepository
     ):
         self.client_repository = client_repository
         self.external_client_repository = external_client_repository 
+        self.company_repository = company_repository
         
     async def execute(self, invoice_data: Dict[str, Any]) -> Dict[str, Any]: 
         
         try: 
+            
+            company_id = invoice_data.get("company_id")
+            if not company_id: 
+                return {
+                    "success": False, 
+                    "error": "company_id es requerido para facturar"
+                }
+
+            company = await self.company_repository.get_by_id(company_id)
+            if not company: 
+                return {
+                    "success": False, 
+                    "error": f"Empresa no encontrada: {company_id}"
+                }   
+                
+            logger.info(f"Facturando para la empresa: {company.business_name}")
 
             validation_result = await self._validate_input_data(invoice_data)
             if not validation_result["valid"]:
@@ -41,7 +62,6 @@ class InvoiceClientUseCase:
             logger.info(f"Datos completos recibidos: {json.dumps(invoice_data, indent=2)}")
 
             existing_client = await self.client_repository.find_by_rfc(rfc)
-            logger.info(f"Cliente existente: {existing_client is not None}")
             
             if existing_client: 
                 factura_client_uid = existing_client.external_uid 
@@ -66,6 +86,7 @@ class InvoiceClientUseCase:
                 "invoice_id": invoice_result.get("invoice_id"), 
                 "internal_client_id": internal_client_id, 
                 "factura_client_id": factura_client_uid, 
+                "internal_company_id": company_id,
                 "message": "Invoice processed successfully"
             }
 
@@ -150,6 +171,7 @@ class InvoiceClientUseCase:
             client_dict = {
                 "tenant_id": event_data.get("tenant_id", str(uuid.uuid4())),
                 "external_uid": factura_uid,
+                "company_id": event_data.get("company_id"),
                 "rfc": event_data.get("rfc"),
                 "business_name": event_data.get("business_name"),
                 "tax_regime": event_data.get("tax_regime"),

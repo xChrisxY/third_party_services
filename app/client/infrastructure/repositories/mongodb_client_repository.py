@@ -1,9 +1,13 @@
 from motor.motor_asyncio import AsyncIOMotorDatabase 
+from typing import Optional
+import logging
 
 from ...domain.entities.client import Client 
 from ...domain.repositories.client_repository import ClientRepository
 
 from shared.exceptions import BusinessException 
+
+logger = logging.getLogger(__name__)
 
 class MongoDBClientRepository(ClientRepository): 
     
@@ -35,4 +39,22 @@ class MongoDBClientRepository(ClientRepository):
             
             return None
         except Exception: 
+            return None
+
+    async def find_by_company(self, rfc: str, company_id: str) -> Optional[Client]:
+        
+        try: 
+            
+            client_data = await self.collection.find_one({
+                "rfc": rfc, 
+                "company_id": company_id
+            })
+            
+            if client_data:
+                client_data["_id"] = str(client_data["_id"])
+                return Client(**client_data)
+            return None
+            
+        except Exception as e: 
+            logger.error(f"Error finding client by RFC and company: {str(e)}")
             return None
