@@ -28,16 +28,31 @@ class RabbitMQConsumer:
                 
                 await connect_to_mongo()
                 logger.info("MongoDB conectado")
+
+                connection_url = settings.rabbitmq_connection_url
                 
-                logger.info(f"Conectando a RabbitMQ en {settings.rabbitmq_host}:{settings.rabbitmq_port}...")
-                self.connection = await aio_pika.connect_robust(
-                    host=settings.rabbitmq_host,
-                    port=settings.rabbitmq_port,
-                    login=settings.rabbitmq_username,
-                    password=settings.rabbitmq_password,
-                    virtualhost=settings.rabbitmq_vhost
-                )
-                logger.info("RabbitMQ conectado")
+                if settings.is_cloudamqp:
+                    logger.info(f"Conectando a CloudAMQP")
+                    self.connection = await aio_pika.connect_robust(
+                        connection_url, 
+                        timeout=30, 
+                        heartbeat=600, 
+                        client_properties={
+                            "connection_name": "third_party_consumer"
+                        }
+                    )
+                else:
+                
+                    logger.info(f"Conectando a RabbitMQ en {settings.rabbitmq_host}:{settings.rabbitmq_port}...")
+                    self.connection = await aio_pika.connect_robust(
+                        host=settings.rabbitmq_host,
+                        port=settings.rabbitmq_port,
+                        login=settings.rabbitmq_username,
+                        password=settings.rabbitmq_password,
+                        virtualhost=settings.rabbitmq_vhost
+                    )
+
+                logger.info("RabbitMQ/CloudAMQP conectado")
                 
                 self.channel = await self.connection.channel()
                 await self.channel.set_qos(prefetch_count=1)
@@ -53,13 +68,16 @@ class RabbitMQConsumer:
     async def setup_queue(self, queue_name: str, routing_key: str):
         try:
             logger.info(f"Configurando cola: {queue_name} para routing key: {routing_key}")
+
+            exchange = await self.channel.get_exchange("amq.topic")
             
             queue = await self.channel.declare_queue(
                 queue_name,
                 durable=True,
                 arguments={
                     "x-dead-letter-exchange": "",
-                    "x-dead-letter-routing-key": f"{queue_name}_dlq"
+                    "x-dead-letter-routing-key": f"{queue_name}_dlq",
+                    "x-message-ttl": 8640000
                 }
             )
             
@@ -118,6 +136,8 @@ class RabbitMQConsumer:
                 logger.info(f"Escuchando: {routing_key} -> Cola: {queue_name}")
 
             logger.info("Consumer iniciado exitosamente")
+            logger.info(f"Conexión: {'CloudAMQP' if settings.is_cloudamqp else 'RabbitMQ Local'}")
+
             await asyncio.Future()
             
         except Exception as e:

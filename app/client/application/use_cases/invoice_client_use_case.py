@@ -11,6 +11,10 @@ from ...domain.entities.client_contact import ClientContact
 from ...domain.repositories.client_repository import ClientRepository 
 from ...domain.repositories.external_client_repository import ExternalClientRepository
 
+from ...application.dtos.client_event_dto import ClientEventDTO
+from ...application.dtos.client_mongo_dto import ClientMongoDTO 
+from ...application.dtos.factura_client_dto import FacturaClientDTO
+
 from company.domain.repositories.company_repository import CompanyRepository
 from shared.responses import ErrorResponse
 
@@ -48,7 +52,9 @@ class InvoiceClientUseCase:
                 
             logger.info(f"Facturando para la empresa: {company.business_name}")
 
-            validation_result = await self._validate_input_data(invoice_data)
+            event_dto = ClientEventDTO(**invoice_data)
+
+            validation_result = await self._validate_input_data(event_dto)
             if not validation_result["valid"]:
                 return {
                     "success": False,
@@ -69,7 +75,7 @@ class InvoiceClientUseCase:
                 logger.info(f"Usando cliente existente: {internal_client_id}")
             else:
                 logger.info(f"Creando nuevo cliente con RFC: {rfc}")
-                client_creation_result = await self._create_client(invoice_data)
+                client_creation_result = await self._create_client(event_dto)
                 factura_client_uid = client_creation_result["factura_uid"]
                 internal_client_id = client_creation_result["internal_client_id"]
                 logger.info(f"Nuevo cliente creado: {internal_client_id}")
@@ -99,10 +105,13 @@ class InvoiceClientUseCase:
         logger.info(f"Detalles de factura: {json.dumps(invoice_details, indent=2)}")
         return {"invoice_id": "inv_12345"}
 
-    async def _create_client(self, client_data: Dict[str, Any]) -> Dict[str, Any]: 
+    async def _create_client(self, client_data: ClientEventDTO) -> Dict[str, Any]: 
         
         try:
-            factura_payload = self._map_to_factura_format(client_data)
+            #factura_payload = self._map_to_factura_format(client_data)
+            factura_dto = FacturaClientDTO.from_event_dto(client_data)
+            factura_payload = factura_dto.model_dump(exclude_none=True)
+
             logger.info(f"Datos para Factura.com: {json.dumps(factura_payload, indent=2)}")
             
             factura_response = await self.external_client_repository.create_client(factura_payload)
@@ -130,68 +139,20 @@ class InvoiceClientUseCase:
             logger.error(f"Error creando cliente: {str(e)}")
             raise
 
-    async def _create_client_in_database(self, event_data: Dict[str, Any], factura_uid: str, factura_response: Dict[str, Any]) -> str:
+    async def _create_client_in_database(self, event_data: ClientEventDTO, factura_uid: str, factura_response: Dict[str, Any]) -> str:
         try:
-            factura_data = factura_response.get('Data', {})
-            contact_data = factura_data.get('Contacto', {})
-            
-            address = ClientAddress(
-                street=event_data.get("address", {}).get("street"),
-                exterior_number=event_data.get("address", {}).get("exterior_number"),
-                interior_number=event_data.get("address", {}).get("interior_number"),
-                neighborhood=event_data.get("address", {}).get("neighborhood"),
-                zip_code=event_data.get("address", {}).get("zip_code"),
-                city=event_data.get("address", {}).get("city"),
-                municipality=event_data.get("address", {}).get("municipality"),
-                locality=event_data.get("address", {}).get("locality"),
-                state=event_data.get("address", {}).get("state"),
-                country=event_data.get("address", {}).get("country", "MEX")
-            )
-            
-            contact = ClientContact(
-                name=event_data.get("contact", {}).get("name"),
-                last_names=event_data.get("contact", {}).get("last_names"),
-                email=event_data.get("contact", {}).get("email"),
-                email2=event_data.get("contact", {}).get("email2"),
-                email3=event_data.get("contact", {}).get("email3"),
-                phone=event_data.get("contact", {}).get("phone")
-            )
-            
-            emails = []
-            if event_data.get("contact", {}).get("email"):
-                emails.append(event_data.get("contact", {}).get("email"))
-            if event_data.get("contact", {}).get("email2"):
-                emails.append(event_data.get("contact", {}).get("email2"))
-            if event_data.get("contact", {}).get("email3"):
-                emails.append(event_data.get("contact", {}).get("email3"))
+            tax_regime_name = await self._get_tax_regime_name(event_data.tax_regime)
+            cfdi_use_name = await self._get_cfdi_use_name(event_data.cfdi_use)
 
-            tax_regime_name = await self._get_tax_regime_name(event_data.get("tax_regime"))
-            cfdi_use_name = await self._get_cfdi_use_name(event_data.get("cfdi_use"))
-            
-            client_dict = {
-                "tenant_id": event_data.get("tenant_id", str(uuid.uuid4())),
-                "external_uid": factura_uid,
-                "company_id": event_data.get("company_id"),
-                "rfc": event_data.get("rfc"),
-                "business_name": event_data.get("business_name"),
-                "tax_regime": event_data.get("tax_regime"),
-                "tax_regime_name": tax_regime_name,
-                "tax_id_number": event_data.get("tax_id_number", ""),
-                "address": address,
-                "contact": contact,
-                "cfdi_use": event_data.get("cfdi_use"),
-                "cfdi_use_name" : cfdi_use_name,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now(),
-                "status": "active",
-                "factura_sync": True,
-                "emails": emails if emails else None
-            }
-            
-            if not client_dict["business_name"]:
-                raise ValueError("business_name es requerido")
-            if not client_dict["rfc"]:
-                raise ValueError("rfc es requerido")
+            mongo_dto = ClientMongoDTO.from_event_dto(
+                event_dto=event_data,
+                factura_uid=factura_uid, 
+                factura_response=factura_response, 
+                tax_regime_name=tax_regime_name, 
+                cfdi_use_name=cfdi_use_name
+            )
+
+            client_dict = mongo_dto.model_dump(by_alias=False, exclude_none=True)
             
             client_model = Client(**client_dict)
             created_client = await self.client_repository.create(client_model)
@@ -210,68 +171,23 @@ class InvoiceClientUseCase:
             logger.error(f"Error creando cliente en BD: {str(e)}")
             raise
 
-    def _map_to_factura_format(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            if hasattr(event_data, 'model_dump'):
-                event_data = event_data.model_dump()
-            
-            address = event_data.get("address", {})
-            if hasattr(address, 'model_dump'):
-                address = address.model_dump()
-                
-            contact = event_data.get("contact", {})
-            if hasattr(contact, 'model_dump'):
-                contact = contact.model_dump()
-            
-            factura_data = {
-                "rfc": str(event_data.get("rfc", "")),
-                "razons": str(event_data.get("business_name", "")),
-                "codpos": str(address.get("zip_code", "")),
-                "email": str(contact.get("email", "")),
-                "usocfdi": str(event_data.get("cfdi_use", "G03")),
-                "regimen": str(event_data.get("tax_regime", "603")),
-                "calle": str(address.get("street", "")),
-                "numero_exterior": str(address.get("exterior_number", "")),
-                "numero_interior": str(address.get("interior_number", "") or ""),
-                "colonia": str(address.get("neighborhood", "")),
-                "ciudad": str(address.get("city", "")),
-                "delegacion": str(address.get("municipality", "") or ""),
-                "estado": str(address.get("state", "")),
-                "pais": str(address.get("country", "MEX")),
-                "numregidtrib": str(event_data.get("tax_id_number", "") or ""),
-                "nombre": str(contact.get("name", "")),
-                "apellidos": str(contact.get("last_names", "")),
-                "telefono": str(contact.get("phone", "") or ""),
-                "email2": str(contact.get("email2", "") or ""),
-                "email3": str(contact.get("email3", "") or "")
-            }
-            
-            cleaned_data = {k: v for k, v in factura_data.items() if v is not None and v != ""}
-            
-            logger.info(f"Datos mapeados para Factura.com: {json.dumps(cleaned_data, indent=2)}")
-            return cleaned_data
-            
-        except Exception as e:
-            logger.error(f"Error en mapeo de datos: {str(e)}")
-            raise
-
     async def _validate_input_data(self, invoice_data: Dict[str, Any]) -> Dict[str, Any]:  
         errors = []
         
-        tax_regime = invoice_data.get("tax_regime")
+        tax_regime = invoice_data.tax_regime
         if tax_regime:
             regime_validation = await self.external_client_repository.validate_tax_regime(tax_regime)
             if not regime_validation["valid"]:
                 errors.append(regime_validation["error"])
             
-        cfdi_use = invoice_data.get("cfdi_use")    
+        cfdi_use = invoice_data.cfdi_use
         if cfdi_use: 
             cfdi_validation = await self.external_client_repository.validate_cfdi_use(cfdi_use, tax_regime)
             
             if not cfdi_validation["valid"]:
                 errors.append(cfdi_validation["error"])
 
-        country = invoice_data.get("address", {}).get("country", "MEX")
+        country = invoice_data.get_address_field("country") or "MEX"
         if country: 
             country_validation = await self.external_client_repository.validate_country(country)
             if not country_validation:

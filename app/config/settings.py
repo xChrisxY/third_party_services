@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     mongo_url: str = f"mongodb://{mongo_user}:{mongo_pass}@{mongo_host}:{mongo_port}"
     database_name: str = "third_party_services_db"
 
+    cloudamqp_url: Optional[str] = None 
+
     rabbitmq_host: str = "rabbitmq"
     rabbitmq_port: int = 5672 
     rabbitmq_username: str = "guest"
@@ -36,6 +38,16 @@ class Settings(BaseSettings):
     encryption_key: str
 
     allowed_origins: list = ["http://localhost:8000"]
+
+    @property
+    def is_cloudamqp(self) -> bool:
+        return self.cloudamqp_url is not None and self.cloudamqp_url.startswith("amqps://")
+
+    @property
+    def rabbitmq_connection_url(self) -> str: 
+        if self.is_cloudamqp: 
+            return self.cloudamqp_url 
+        return f"amqp://{self.rabbitmq_username}:{self.rabbitmq_password}@{self.rabbitmq_host}:{self.rabbitmq_port}/{self.rabbitmq_vhost}"
 
     class Config: 
         env_file = ".env"
