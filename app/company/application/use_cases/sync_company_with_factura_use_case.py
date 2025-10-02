@@ -3,6 +3,11 @@ from ...domain.entities.company import Company
 from ...domain.repositories.company_repository import CompanyRepository
 from ...domain.repositories.external_company_repository import ExternalCompanyRepository
 from ...domain.repositories.credential_repository import CredentialRepository
+
+from ..dtos.company_event_dto import CompanyEventDTO 
+from ..dtos.factura_company_dto import FacturaCompanyDTO 
+from ..dtos.company_mongo_dto import CompanyMongoDTO
+
 import json
 import asyncio
 import logging
@@ -26,14 +31,15 @@ class SyncCompanyWithFacturaUseCase:
     async def execute(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
             logger.info(f"Datos recibidos del evento: {json.dumps(event_data, indent=2)}")
+            event_dto = CompanyEventDTO(**event_data)
             
-            company_data = self._map_to_factura_format(event_data)
-            logger.info(f"Datos mapeados para Factura: {json.dumps(company_data, indent=2)}")
+            factura_dto = FacturaCompanyDTO.from_event_dto(event_dto)
+            logger.info(f"Datos para factura: {factura_dto.model_dump(exclude_none=True)}")
 
             series_to_create = event_data.get("series", [])
             has_new_series = len(series_to_create) > 0
             
-            response = await self.external_company_repository.create_company(company_data)
+            response = await self.external_company_repository.create_company(factura_dto.model_dump(exclude_none=True))
             
             if response.get('status') == 'create': 
                 factura_company_id = response.get('0', {}).get('acco_id')
@@ -51,7 +57,7 @@ class SyncCompanyWithFacturaUseCase:
                 credentials = await self.external_company_repository.get_company_credentials(factura_uid)
                 
                 company_id = await self._create_company_in_database(
-                    event_data, 
+                    event_dto,
                     factura_company_id, 
                     credentials, 
                     company_series
@@ -86,59 +92,6 @@ class SyncCompanyWithFacturaUseCase:
             logger.error(f"Error inesperado en use case: {str(e)}")
             return {"success": False, "error": str(e)}
 
-    def _map_to_factura_format(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
-        fiscal_data = event_data.get("fiscal_data", {})
-        contact = event_data.get("contact", {})
-        emails = event_data.get("emails", {})
-        certificates = event_data.get("certificates", {})
-        smtp_config = event_data.get("smtp_config", {})
-        
-        form_data = {
-            "razons": event_data.get("business_name"),
-            "rfc": fiscal_data.get("tax_id"),
-            "codpos": fiscal_data.get("zip_code"),
-            "calle": fiscal_data.get("street"),
-            "numero_exterior": fiscal_data.get("ext_number"),
-            "numero_interior": fiscal_data.get("int_number"),
-            "colonia": fiscal_data.get("neighborhood"),
-            "estado": fiscal_data.get("state"),
-            "ciudad": fiscal_data.get("city"),
-            "delegacion": fiscal_data.get("municipality", ""),
-            "email": emails.get("contact"),
-            "regimen": fiscal_data.get("tax_regime"),
-            "mailtomyconta": "1" if emails.get("accounting") else "0",
-            "mail_conta": emails.get("accounting", ""),
-            "mailtomyself": "1",
-            "telefono": contact.get("phone"),
-            "curp": fiscal_data.get("curp", ""),
-            "password": certificates.get("fiel_password", "12345678a"),
-        }
-        
-        if certificates.get('fiel_cer'):
-            form_data["fiel_cer_b64"] = certificates['fiel_cer']
-        if certificates.get('fiel_key'):
-            form_data["fiel_key_b64"] = certificates['fiel_key']
-        if certificates.get('csd_cer'):
-            form_data["csd_cer_b64"] = certificates['csd_cer']
-        if certificates.get('csd_key'):
-            form_data["csd_key_b64"] = certificates['csd_key']
-        if certificates.get('fiel_password'):
-            form_data["fielpassword"] = certificates['fiel_password']
-        
-        if smtp_config:
-            form_data.update({
-                "smtp": "1",
-                "smtp_email": smtp_config.get("email"),
-                "smtp_password": smtp_config.get("password"),
-                "smtp_port": smtp_config.get("port"),
-                "smtp_host": smtp_config.get("host"),
-                "smtp_encryption": smtp_config.get("encryption", "tls"),
-            })
-        else:
-            form_data["smtp"] = "0"
-        
-        return form_data
-
     async def _update_company_with_real_credentials(self, company_id: str, real_credentials: Dict[str, Any]):
         try:
             logger.info(f"Credenciales recibidas: {json.dumps(real_credentials, indent=2)}")
@@ -149,9 +102,9 @@ class SyncCompanyWithFacturaUseCase:
                 "metadata.apiKey": encrypted_credentials.get('api_key'),    
                 "metadata.apiSecret": encrypted_credentials.get('secret_key'), 
                 "metadata.thpFcUid": real_credentials.get('uid', ''),
-                #"metadata.razonSocial": real_credentials.get('razon_social', ''),
-                #"metadata.rfc": real_credentials.get('rfc', ''),
-                #"metadata.regimenFiscal": real_credentials.get('regimen_fiscal', ''),
+                "metadata.razonSocial": real_credentials.get('razon_social', ''),
+                "metadata.rfc": real_credentials.get('rfc', ''),
+                "metadata.regimenFiscal": real_credentials.get('regimen_fiscal', ''),
                 "metadata.updatedAt": datetime.now().isoformat(),
                 #"metadata.credentialStatus": "decrypted" 
             }
@@ -166,11 +119,10 @@ class SyncCompanyWithFacturaUseCase:
             raise
 
     async def _process_series(self, company_uid: str, has_new_series: bool, new_series: List[Dict[str, Any]]): 
-        
         try: 
             if has_new_series: 
                 logger.info(f"Creando {len(new_series)} nuevas series en base de datos")
-
+                
                 mapped_series = []
                 for serie in new_series:
                     mapped_series.append({
@@ -181,13 +133,22 @@ class SyncCompanyWithFacturaUseCase:
                         "initial_folio": serie.get("initial_folio", 1)
                     })
                 
-                created_series = await self.external_company_repository.create_series(company_uid, new_series)
+                created_series = await self.external_company_repository.create_series(company_uid, mapped_series)
+                
+                if created_series and isinstance(created_series[0], object) and not isinstance(created_series[0], dict):
+                    return [series.model_dump() if hasattr(series, 'model_dump') else series.dict() if hasattr(series, 'dict') else series for series in created_series]
                 return created_series
+                
             else: 
                 logger.info("No hay nuevas series, obteniendo serie por defecto de Factura.com")
                 default_series = await self.external_company_repository.get_default_series(company_uid)
                 if default_series: 
-                    return [default_series]
+                    if hasattr(default_series, 'model_dump'):
+                        return [default_series.model_dump()]
+                    elif hasattr(default_series, 'dict'):
+                        return [default_series.dict()]
+                    else:
+                        return [default_series]
                 else:  
                     logger.warning("No se pudo obtener serie por defecto, retornando lista vacía")
                     return []
@@ -197,76 +158,20 @@ class SyncCompanyWithFacturaUseCase:
 
     async def _create_company_in_database(
         self, 
-        event_data: Dict[str, Any], 
+        event_dto: CompanyEventDTO,
         factura_id: str, 
         credentials: Dict[str, Any], 
         company_series: List[Dict[str, Any]]
     ) -> str:
         try:
-            credentials_data = credentials.get('data', {})
 
-            company_dict = {
-                "tenant_id": event_data.get("company_id", str(uuid.uuid4())), 
-                "business_name": event_data.get("business_name"),
-                "trade_name": event_data.get("trade_name"),
-                
-                "source": {
-                    "service": "external",
-                    "serviceId": event_data.get("company_id"),
-                    "referralCode": None
-                },
-                
-                "contact": {
-                    "name": event_data.get("contact", {}).get("name", ""),
-                    "phone": event_data.get("contact", {}).get("phone", ""),
-                    "email": event_data.get("emails", {}).get("contact", "")
-                },
-                
-                "fiscal_data": {
-                    "legalName": event_data.get("business_name", ""),
-                    "taxId": event_data.get("fiscal_data", {}).get("tax_id", ""),
-                    "taxRegime": event_data.get("fiscal_data", {}).get("tax_regime", ""),
-                    "zipCode": event_data.get("fiscal_data", {}).get("zip_code", ""),
-                    "street": event_data.get("fiscal_data", {}).get("street", ""),
-                    "extNumber": event_data.get("fiscal_data", {}).get("ext_number", ""),
-                    "intNumber": event_data.get("fiscal_data", {}).get("int_number"),
-                    "neighborhood": event_data.get("fiscal_data", {}).get("neighborhood", ""),
-                    "state": event_data.get("fiscal_data", {}).get("state", ""),
-                    "city": event_data.get("fiscal_data", {}).get("city", ""),
-                    "country": "México"
-                },
-                
-                "emails": {
-                    "contact": event_data.get("emails", {}).get("contact", ""),
-                    "owner": event_data.get("emails", {}).get("contact", ""), 
-                    "billing": event_data.get("emails", {}).get("contact", ""),
-                    "accountant": event_data.get("emails", {}).get("accounting", "")
-                },
-                
-                "configs": {
-                    "sendCopyToClient": True,
-                    "sendCopyToAccountant": bool(event_data.get("emails", {}).get("accounting")),
-                    "notifications": {
-                        "whatsapp": False,
-                        "slack": False,
-                        "webhookUrl": None
-                    }
-                },
-                
-                "metadata": {
-                    "apiKey": credentials_data.get('api_key'),     
-                    "apiSecret": credentials_data.get('secret_key'), 
-                    "thpFcUid": credentials_data.get('uid'),  
-                    "createdAt": datetime.now().isoformat(),
-                    "updatedAt": datetime.now().isoformat(),
-                    "status": "active"
-                }, 
-                
-                "series": company_series
-            }
+            database_dto = CompanyMongoDTO.from_event_dto(
+                event_dto, factura_id, credentials, company_series
+            )
+            company_dict = database_dto.model_dump(by_alias=True, exclude_none=True)
             
-            company_model = Company(**company_dict)
-            created_company = await self.company_repository.create(company_model)
+            logger.info(f"Insertando en BD...")
+            created_company = await self.company_repository.create(company_dict)
             if hasattr(created_company, 'inserted_id'):
                 company_id = str(created_company.inserted_id)
             elif hasattr(created_company, 'id'):

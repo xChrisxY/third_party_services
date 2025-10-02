@@ -13,7 +13,8 @@ class FiscalData(BaseModel):
     state: str 
     city: str 
     country: str 
+    curp: Optional[str] = Field(None, description="CURP de la empresa")
     
     class Config: 
         populate_by_name = True 
-        extra = "forbid"
+        extra = "allow"

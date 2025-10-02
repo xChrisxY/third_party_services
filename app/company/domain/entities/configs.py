@@ -8,7 +8,7 @@ class Notifications(BaseModel):
 
     class Config: 
         populate_by_name = True 
-        extra = "forbid"
+        extra = "allow"
 
 
 class Configs(BaseModel): 
@@ -18,4 +18,4 @@ class Configs(BaseModel):
     
     class Config: 
         populate_by_name = True 
-        extra = "forbid"
+        extra = "allow"

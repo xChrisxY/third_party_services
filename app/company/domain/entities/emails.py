@@ -5,4 +5,7 @@ class Emails(BaseModel):
     owner: EmailStr 
     billing: EmailStr 
     accountant: EmailStr  
+
+    class Config: 
+        extra = "allow"
     

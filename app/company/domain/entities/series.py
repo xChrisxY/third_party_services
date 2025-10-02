@@ -15,3 +15,4 @@ class Series(BaseModel):
 
     class Config:
         populate_by_name = True
+        extra = "allow"
